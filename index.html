@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -159,12 +160,18 @@
 </head>
 
 <body>
-  <main class="container">
-    <h1>Minha lista de tarefas</h1>
-    <p class="subtitle">Adicione, conclua e organize suas atividades.</p>
 
-    <!-- O formulário captura o texto digitado pelo usuário. -->
+  <main class="container">
+
+    <h1>Minha lista de tarefas</h1>
+
+    <p class="subtitle">
+      Adicione, conclua e organize suas atividades.
+    </p>
+
+    <!-- Formulário para cadastrar tarefas. -->
     <form id="task-form">
+
       <input
         id="task-input"
         type="text"
@@ -173,41 +180,53 @@
         aria-label="Nova tarefa"
         required
       >
-      <button class="add-button" type="submit">Adicionar</button>
+
+      <button class="add-button" type="submit">
+        Adicionar
+      </button>
+
     </form>
 
-    <!-- O JavaScript atualiza esta área quando há erro ou carregamento. -->
+    <!-- Área para mensagens de carregamento e erros. -->
     <p id="message" role="status" aria-live="polite"></p>
 
-    <!-- As tarefas vindas da API serão inseridas nesta lista. -->
+    <!-- Lista onde as tarefas serão apresentadas. -->
     <ul id="task-list" class="task-list"></ul>
+
   </main>
 
   <script>
+
     // ==========================================================
     // 1. REFERÊNCIAS AOS ELEMENTOS HTML
     // ==========================================================
 
     // Endereço público do backend publicado na Vercel.
-    const API_BASE_URL = "https://backendlista.vercel.app/";
+    // Não coloque barra "/" no final.
+    const API_BASE_URL = "https://backendlista.vercel.app";
 
-    
     // Guardamos os elementos em variáveis para reutilizá-los.
     const form = document.getElementById("task-form");
     const input = document.getElementById("task-input");
     const taskList = document.getElementById("task-list");
     const message = document.getElementById("message");
 
+
     // ==========================================================
     // 2. FUNÇÃO AUXILIAR PARA CONVERSAR COM A API
     // ==========================================================
 
     // Toda comunicação com o backend passa por esta função.
-    // Assim evitamos repetir fetch(), tratamento de status e JSON.
-    async function apiRequest(`${API_BASE_URL}${url}`, options = {}) {
-      const response = await fetch(url, {
+    async function apiRequest(url, options = {}) {
+
+      const response = await fetch(`${API_BASE_URL}${url}`, {
         ...options,
+
+        // Evita utilizar respostas antigas armazenadas em cache.
+        cache: "no-store",
+
         headers: {
+          "Accept": "application/json",
           "Content-Type": "application/json",
           ...options.headers
         }
@@ -218,16 +237,35 @@
         return null;
       }
 
-      // Converte a resposta em objeto JavaScript.
-      const data = await response.json();
+      // Verifica se a resposta possui conteúdo JSON.
+      const contentType = response.headers.get("content-type") || "";
+
+      let data = {};
+
+      if (contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const responseText = await response.text();
+
+        if (!response.ok) {
+          throw new Error(
+            responseText || `Erro HTTP: ${response.status}`
+          );
+        }
+
+        throw new Error("O servidor não retornou uma resposta JSON.");
+      }
 
       // Se o servidor respondeu com erro, mostramos a mensagem.
       if (!response.ok) {
-        throw new Error(data.error || "Não foi possível concluir a operação.");
+        throw new Error(
+          data.error || `Erro HTTP: ${response.status}`
+        );
       }
 
       return data;
     }
+
 
     // ==========================================================
     // 3. MENSAGENS PARA O USUÁRIO
@@ -237,12 +275,15 @@
       message.textContent = text;
     }
 
+
     // ==========================================================
     // 4. CARREGAR E MOSTRAR AS TAREFAS
     // ==========================================================
 
     async function loadTasks() {
+
       try {
+
         showMessage("Carregando tarefas...");
 
         // GET solicita ao backend a lista armazenada no Supabase.
@@ -252,121 +293,206 @@
         taskList.replaceChildren();
 
         if (tasks.length === 0) {
+
           const empty = document.createElement("li");
+
           empty.className = "empty";
-          empty.textContent = "Nenhuma tarefa cadastrada. Adicione a primeira!";
+
+          empty.textContent =
+            "Nenhuma tarefa cadastrada. Adicione a primeira!";
+
           taskList.appendChild(empty);
+
         } else {
+
           // Cria um elemento visual para cada tarefa retornada pela API.
           tasks.forEach((task) => {
             taskList.appendChild(createTaskElement(task));
           });
+
         }
 
         showMessage();
+
       } catch (error) {
+
         showMessage(error.message);
+
       }
+
     }
+
 
     // ==========================================================
     // 5. CONSTRUIR O HTML DE UMA TAREFA
     // ==========================================================
 
     function createTaskElement(task) {
+
       const item = document.createElement("li");
-      item.className = task.completed ? "task completed" : "task";
+
+      item.className = task.completed
+        ? "task completed"
+        : "task";
+
 
       // Checkbox indica se a tarefa foi concluída.
       const checkbox = document.createElement("input");
+
       checkbox.type = "checkbox";
+
       checkbox.checked = task.completed;
-      checkbox.setAttribute("aria-label", "Marcar tarefa como concluída");
+
+      checkbox.setAttribute(
+        "aria-label",
+        "Marcar tarefa como concluída"
+      );
+
 
       // O título é inserido com textContent, e não innerHTML.
       // Isso evita interpretar texto digitado como código HTML.
       const title = document.createElement("span");
+
       title.className = "task-title";
+
       title.textContent = task.title;
+
 
       // Botão para apagar a tarefa.
       const deleteButton = document.createElement("button");
+
       deleteButton.type = "button";
+
       deleteButton.className = "delete-button";
+
       deleteButton.textContent = "Excluir";
 
-      // Ao marcar/desmarcar, atualizamos o campo completed no banco.
+
+      // ========================================================
+      // 5.1. MARCAR OU DESMARCAR UMA TAREFA
+      // ========================================================
+
       checkbox.addEventListener("change", async () => {
+
         try {
+
           await apiRequest(`/api/tasks/${task.id}`, {
+
             method: "PATCH",
-            body: JSON.stringify({ completed: checkbox.checked })
+
+            body: JSON.stringify({
+              completed: checkbox.checked
+            })
+
           });
 
           // Recarrega para refletir o estado salvo no banco.
           await loadTasks();
+
         } catch (error) {
+
           showMessage(error.message);
+
           checkbox.checked = !checkbox.checked;
+
         }
+
       });
 
-      // Ao excluir, pedimos ao backend para remover o registro.
+
+      // ========================================================
+      // 5.2. EXCLUIR UMA TAREFA
+      // ========================================================
+
       deleteButton.addEventListener("click", async () => {
-        const confirmed = confirm(`Deseja excluir "${task.title}"?`);
+
+        const confirmed = confirm(
+          `Deseja excluir "${task.title}"?`
+        );
 
         if (!confirmed) return;
 
         try {
+
           await apiRequest(`/api/tasks/${task.id}`, {
+
             method: "DELETE"
+
           });
 
           await loadTasks();
+
         } catch (error) {
+
           showMessage(error.message);
+
         }
+
       });
+
 
       // Junta os elementos e devolve a linha pronta para a lista.
       item.append(checkbox, title, deleteButton);
+
       return item;
+
     }
+
 
     // ==========================================================
     // 6. CADASTRAR UMA NOVA TAREFA
     // ==========================================================
 
     form.addEventListener("submit", async (event) => {
+
       // Impede o navegador de recarregar a página ao enviar o formulário.
       event.preventDefault();
 
       const title = input.value.trim();
 
+
       // Validação no frontend para orientar o usuário.
-      // O backend também valida, pois não se deve confiar só no navegador.
       if (!title) {
+
         showMessage("Digite uma tarefa antes de adicionar.");
+
         return;
+
       }
 
+
       try {
+
         showMessage("Salvando tarefa...");
+
 
         // POST envia o título ao backend, que grava no Supabase.
         await apiRequest("/api/tasks", {
+
           method: "POST",
-          body: JSON.stringify({ title })
+
+          body: JSON.stringify({
+            title: title
+          })
+
         });
+
 
         // Limpa o campo e atualiza a lista após salvar.
         input.value = "";
+
         input.focus();
+
         await loadTasks();
+
       } catch (error) {
+
         showMessage(error.message);
+
       }
+
     });
+
 
     // ==========================================================
     // 7. CARREGAMENTO INICIAL
@@ -374,6 +500,8 @@
 
     // Quando a página abre, busca as tarefas já existentes no banco.
     loadTasks();
+
   </script>
+
 </body>
 </html>
