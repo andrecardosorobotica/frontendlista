@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minha lista de tarefas</title>
+
+  <style>
+    /* Define cores e medidas reutilizáveis em toda a página. */
+    :root {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #172033;
+      background: #f3f5f9;
+    }
+
+    /* Remove margens padrão e facilita o cálculo das dimensões. */
+    * {
+      box-sizing: border-box;
+    }
+
+    /* Centraliza o conteúdo e ocupa a altura mínima da tela. */
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 48px 16px;
+    }
+
+    /* Cartão principal que contém o formulário e a lista. */
+    .container {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 32px;
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 12px 35px rgba(20, 35, 70, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      margin: 0 0 26px;
+      color: #667085;
+    }
+
+    /* Formulário em linha: campo flexível e botão ao lado. */
+    form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid #d0d5dd;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .add-button {
+      color: white;
+      background: #3157d5;
+    }
+
+    .add-button:hover {
+      background: #2445b5;
+    }
+
+    /* Área reservada para mensagens de carregamento e erros. */
+    #message {
+      min-height: 22px;
+      margin: 8px 0 12px;
+      color: #b42318;
+      font-size: 14px;
+    }
+
+    /* Cada tarefa é apresentada em uma linha independente. */
+    .task-list {
+      display: grid;
+      gap: 10px;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .task {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px;
+      border: 1px solid #eaecf0;
+      border-radius: 12px;
+    }
+
+    .task-title {
+      flex: 1;
+      overflow-wrap: anywhere;
+    }
+
+    /* Aparência visual de uma tarefa já concluída. */
+    .task.completed .task-title {
+      color: #98a2b3;
+      text-decoration: line-through;
+    }
+
+    .task input[type="checkbox"] {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .delete-button {
+      padding: 8px 10px;
+      color: #b42318;
+      background: #fff1f0;
+    }
+
+    .delete-button:hover {
+      background: #ffe1df;
+    }
+
+    .empty {
+      padding: 22px;
+      color: #667085;
+      text-align: center;
+      border: 1px dashed #d0d5dd;
+      border-radius: 12px;
+    }
+
+    /* Ajustes para telas pequenas, como celulares. */
+    @media (max-width: 520px) {
+      body {
+        padding: 20px 12px;
+      }
+
+      .container {
+        padding: 22px 16px;
+      }
+
+      form {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+    <h1>Minha lista de tarefas</h1>
+    <p class="subtitle">Adicione, conclua e organize suas atividades.</p>
+
+    <!-- O formulário captura o texto digitado pelo usuário. -->
+    <form id="task-form">
+      <input
+        id="task-input"
+        type="text"
+        maxlength="200"
+        placeholder="Digite uma nova tarefa..."
+        aria-label="Nova tarefa"
+        required
+      >
+      <button class="add-button" type="submit">Adicionar</button>
+    </form>
+
+    <!-- O JavaScript atualiza esta área quando há erro ou carregamento. -->
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <!-- As tarefas vindas da API serão inseridas nesta lista. -->
+    <ul id="task-list" class="task-list"></ul>
+  </main>
+
+  <script>
+    // ==========================================================
+    // 1. REFERÊNCIAS AOS ELEMENTOS HTML
+    // ==========================================================
+
+    // Endereço público do backend publicado na Vercel.
+    const API_BASE_URL = "https://backendlista.vercel.app/";
+
+    
+    // Guardamos os elementos em variáveis para reutilizá-los.
+    const form = document.getElementById("task-form");
+    const input = document.getElementById("task-input");
+    const taskList = document.getElementById("task-list");
+    const message = document.getElementById("message");
+
+    // ==========================================================
+    // 2. FUNÇÃO AUXILIAR PARA CONVERSAR COM A API
+    // ==========================================================
+
+    // Toda comunicação com o backend passa por esta função.
+    // Assim evitamos repetir fetch(), tratamento de status e JSON.
+    async function apiRequest(`${API_BASE_URL}${url}`, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+
+      // A resposta 204 (exclusão) não possui corpo JSON.
+      if (response.status === 204) {
+        return null;
+      }
+
+      // Converte a resposta em objeto JavaScript.
+      const data = await response.json();
+
+      // Se o servidor respondeu com erro, mostramos a mensagem.
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível concluir a operação.");
+      }
+
+      return data;
+    }
+
+    // ==========================================================
+    // 3. MENSAGENS PARA O USUÁRIO
+    // ==========================================================
+
+    function showMessage(text = "") {
+      message.textContent = text;
+    }
+
+    // ==========================================================
+    // 4. CARREGAR E MOSTRAR AS TAREFAS
+    // ==========================================================
+
+    async function loadTasks() {
+      try {
+        showMessage("Carregando tarefas...");
+
+        // GET solicita ao backend a lista armazenada no Supabase.
+        const tasks = await apiRequest("/api/tasks");
+
+        // Limpa a lista antes de desenhar os dados atualizados.
+        taskList.replaceChildren();
+
+        if (tasks.length === 0) {
+          const empty = document.createElement("li");
+          empty.className = "empty";
+          empty.textContent = "Nenhuma tarefa cadastrada. Adicione a primeira!";
+          taskList.appendChild(empty);
+        } else {
+          // Cria um elemento visual para cada tarefa retornada pela API.
+          tasks.forEach((task) => {
+            taskList.appendChild(createTaskElement(task));
+          });
+        }
+
+        showMessage();
+      } catch (error) {
+        showMessage(error.message);
+      }
+    }
+
+    // ==========================================================
+    // 5. CONSTRUIR O HTML DE UMA TAREFA
+    // ==========================================================
+
+    function createTaskElement(task) {
+      const item = document.createElement("li");
+      item.className = task.completed ? "task completed" : "task";
+
+      // Checkbox indica se a tarefa foi concluída.
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = task.completed;
+      checkbox.setAttribute("aria-label", "Marcar tarefa como concluída");
+
+      // O título é inserido com textContent, e não innerHTML.
+      // Isso evita interpretar texto digitado como código HTML.
+      const title = document.createElement("span");
+      title.className = "task-title";
+      title.textContent = task.title;
+
+      // Botão para apagar a tarefa.
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "delete-button";
+      deleteButton.textContent = "Excluir";
+
+      // Ao marcar/desmarcar, atualizamos o campo completed no banco.
+      checkbox.addEventListener("change", async () => {
+        try {
+          await apiRequest(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ completed: checkbox.checked })
+          });
+
+          // Recarrega para refletir o estado salvo no banco.
+          await loadTasks();
+        } catch (error) {
+          showMessage(error.message);
+          checkbox.checked = !checkbox.checked;
+        }
+      });
+
+      // Ao excluir, pedimos ao backend para remover o registro.
+      deleteButton.addEventListener("click", async () => {
+        const confirmed = confirm(`Deseja excluir "${task.title}"?`);
+
+        if (!confirmed) return;
+
+        try {
+          await apiRequest(`/api/tasks/${task.id}`, {
+            method: "DELETE"
+          });
+
+          await loadTasks();
+        } catch (error) {
+          showMessage(error.message);
+        }
+      });
+
+      // Junta os elementos e devolve a linha pronta para a lista.
+      item.append(checkbox, title, deleteButton);
+      return item;
+    }
+
+    // ==========================================================
+    // 6. CADASTRAR UMA NOVA TAREFA
+    // ==========================================================
+
+    form.addEventListener("submit", async (event) => {
+      // Impede o navegador de recarregar a página ao enviar o formulário.
+      event.preventDefault();
+
+      const title = input.value.trim();
+
+      // Validação no frontend para orientar o usuário.
+      // O backend também valida, pois não se deve confiar só no navegador.
+      if (!title) {
+        showMessage("Digite uma tarefa antes de adicionar.");
+        return;
+      }
+
+      try {
+        showMessage("Salvando tarefa...");
+
+        // POST envia o título ao backend, que grava no Supabase.
+        await apiRequest("/api/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title })
+        });
+
+        // Limpa o campo e atualiza a lista após salvar.
+        input.value = "";
+        input.focus();
+        await loadTasks();
+      } catch (error) {
+        showMessage(error.message);
+      }
+    });
+
+    // ==========================================================
+    // 7. CARREGAMENTO INICIAL
+    // ==========================================================
+
+    // Quando a página abre, busca as tarefas já existentes no banco.
+    loadTasks();
+  </script>
+</body>
+</html>
